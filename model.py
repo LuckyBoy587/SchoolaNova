@@ -18,7 +18,6 @@ class SimpleRag:
 
     def __init__(self, fileName):
         self.fileName = fileName
-        self.book_data = ""
         self.lines = []
         # Models and index are lazily loaded to improve startup time
         self.model = None
@@ -27,41 +26,25 @@ class SimpleRag:
         self.rephrase_model = None
 
         # Call setup methods to prepare the data and embeddings
-        self.getText()
-        self.createEmbeddings()
+        self._intialize()
 
-        # Initialize the question generation pipeline. This can be memory-intensive.
-        try:
-            self.question_model = pipeline(
-                "text2text-generation",
-                model="mrm8488/t5-base-finetuned-question-generation-ap"
-            )
-            print("Question generation model loaded.")
-        except Exception as e:
-            print(f"Error loading question generation model: {e}")
-            traceback.print_exc()
-
-        # Initialize the rephrase generator pipelin
-        try:
-          self.rephrase_model = pipeline(
-              "summarization",
-              model="t5-small"
-          )
-          print("Rephrasing model loaded.")
-        except Exception as e:
-          print(f"Error loading rephrasing model: {e}")
-          traceback.print_exc()
+        def _initialize(self):
+            """Initializes the RAG system by loading data, embeddings, and models."""
+            self.getText()
+            self.createEmbeddings()
+            self._load_generation_models()
 
     def getText(self):
         """Reads the text file and preprocesses the content."""
         try:
             with open(self.fileName, 'r', encoding='utf-8') as file:
                 self.book_data = file.read()
-                temp_lines = self.book_data.split("\n")
+                
+            temp_lines = self.book_data.split("\n")
 
-                # Remove numbers and clean up lines
-                temp_lines = [re.sub(r'\d+', '', line) for line in temp_lines]
-                self.lines = [line.strip() for line in temp_lines if line.strip() != ""]
+            # Remove numbers and clean up lines
+            temp_lines = [re.sub(r' +', ' ', line.strip()) for line in temp_lines]
+            self.lines = [line for line in temp_lines if line]
 
             print(f"Total Lines extracted: {len(self.lines)}")
         except FileNotFoundError:
@@ -80,8 +63,7 @@ class SimpleRag:
                 print("Initialized embedding model.")
 
             # Create embeddings from book_data
-            embeddings = self.model.encode(self.lines, normalize_embeddings=True)
-            embeddings = np.float32(embeddings) # FAISS requires float32
+            embeddings = self.model.encode(self.lines, normalize_embeddings=True).astype('flaot32') # FAISS requires float32
 
             # Create a FAISS index
             d = embeddings.shape[1]  # Dimension of the embeddings
@@ -93,6 +75,29 @@ class SimpleRag:
         except Exception as e:
             print(f"Error creating embeddings: {e}")
             traceback.print_exc()
+
+    def _load_generation_models(self):
+        """Helper to load all heavy generation models."""
+        try:
+            self.question_model = pipeline(
+                "text2text-generation",
+                model="mrm8488/t5-base-finetuned-question-generation-ap"
+            )
+            print("Question generation model loaded.")
+        except Exception as e:
+            print(f"Error loading question generation model: {e}")
+            traceback.print_exc()
+
+        try:
+            self.rephrase_model = pipeline(
+                "summarization",
+                model="t5-small"
+            )
+            print("Rephrasing model loaded.")
+        except Exception as e:
+            print(f"Error loading rephrasing model: {e}")
+            traceback.print_exc()
+
 
     def get_relevent_lines(self, q, k=3):
         """
@@ -111,8 +116,7 @@ class SimpleRag:
 
         try:
             # Create embeddings for the query
-            query_embedding = self.model.encode([q], normalize_embeddings=True)
-            query_embedding = np.float32(query_embedding)
+            query_embedding = self.model.encode([q], normalize_embeddings=True).astype('flaot32')
 
             # Search the FAISS index for relevant lines
             distances, indices = self.index.search(query_embedding, k)
@@ -153,11 +157,12 @@ class SimpleRag:
                 return []
             
             # Prompt the query for question generation  [Model expects -> 'generate question: {answers}']
-            answers = "generate question: ".join(relevant_snippets)
+            answers_text = " ".join([item for item in relevant_snippets])
+            formatted_input = f"generate question: {answers_text}"
 
             print(f"Number of snippets used for generation: {len(relevant_snippets)}")
 
-            questions = self.question_model(answers, max_length=64, num_return_sequences=n)
+            questions = self.question_model(formatted_input, max_length=64, num_return_sequences=n, do_sample=True, top_k=50)
 
             # return list of generated questions
             return [q["generated_text"] for q in questions]
