@@ -209,4 +209,3 @@ class SimpleRag:
     def get_answer(self, query, k=3):
       raw_text = "".join(self.get_relevent_lines(query, k))
       return self.rephrse_answer(raw_text)
-
