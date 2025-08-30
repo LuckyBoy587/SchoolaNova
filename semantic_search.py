@@ -63,7 +63,6 @@ def semantic_search_pdf(
     pdf_path: str,
     user_query: str,
     top_k: int = 5,
-    model: Optional[SentenceTransformer] = None,
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     names_to_ignore: Optional[List[str]] = None,
     device: Optional[str] = None,
@@ -83,7 +82,12 @@ def semantic_search_pdf(
     - use_faiss: attempt to use FAISS if available.
     - use_faiss_gpu: if FAISS has GPU support, move index to GPU for search.
     """
-
+    model = None
+    if SentenceTransformer is not None:
+        try:
+            model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cuda")
+        except Exception:
+            model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     if names_to_ignore is None:
         names_to_ignore = []
 
@@ -312,13 +316,8 @@ if __name__ == "__main__":
     user_query = "In Gulab Jamun chashni, which component is the solvent and which is the solute?"
 
     # Load model once and reuse (attempt GPU)
-    model = None
-    if SentenceTransformer is not None:
-        try:
-            model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cuda")
-        except Exception:
-            model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    
 
-    results = semantic_search_pdf(pdf_path, user_query, model=model, use_faiss=True, use_faiss_gpu=True)
+    results = semantic_search_pdf(pdf_path, user_query, use_faiss=True, use_faiss_gpu=True)
     for res in results:
         print(f"Rank: {res['rank']}, Score: {res['score']:.4f}, Chunk: {res['chunk']}\n")
