@@ -1,2 +1,3 @@
 fiass-cpu
 transformers
+nltk
